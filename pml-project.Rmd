@@ -1,0 +1,85 @@
+---
+title: "Course Project Practical Machine Learning"
+author: "Hendrik D'Oosterlinck"
+date: "Thursday, October 23, 2014"
+output: html_document
+---
+
+
+```{r result='hide',warning=FALSE,echo=FALSE}
+library(caret)
+library(ggplot2)
+library(AppliedPredictiveModeling)
+library(randomForest)
+```
+
+##Summary
+A machine learning algorithm is created to model data from the following paper:
+
+*Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.*
+
+The data can be downloaded here: *http://groupware.les.inf.puc-rio.br/har*
+
+**The model is a random forest model and scored an accuracy of 99.23% in a preliminary test, so it was accepted and applied to the testing data.** 
+
+
+##Input
+
+We read in the data, telling R to consider multiple NA strings, and drop the raw info data in the first seven columns.
+
+```{r cache=TRUE}
+trainingRAW <- read.csv("pml-training.csv",na.strings=c(NA,"#DIV/0!",""))
+testingRAW <- read.csv("pml-testing.csv",na.strings=c(NA,"#DIV/0!",""))
+
+training <- trainingRAW[,-seq(1:7)]
+```
+
+When columns contain data on less than 20% of the rows, we discard the column as a potential predictor.
+Here, we define a function emptiness, and take columns with an emptiness below 20% as predictors.
+```{r cache=TRUE}
+emptiness <- function(col){
+  empty <- sum(is.na(col))
+  size <- length(col)
+  return(empty/size)
+}
+
+training2 <- training[,apply(training,2,emptiness)<.2]
+```
+This still leaves us with 53 variables.
+
+Next step is splitting the training data into a **subtraining and subtest** set:
+```{r cache=TRUE}
+set.seed(9999)
+inTraining <- createDataPartition(y=training2$classe,p=0.75,list=FALSE)
+subTraining <- training2[inTraining,]
+subTesting <- training2[-inTraining,]
+```
+
+##Choosing the model
+The choice of a random forest model was quickly made. 
+
+* There's 53 predictors and quite possibly a lot of interaction between them.  
+* There's an unbiased estimate of the out-of-sample error rate.   
+* I have time since the results are static and I need accurate results.  
+
+##Running the model
+Following all the preparation, the actual model building is easy in R. Random forests are done by passing 'method="rf"' to the train function, and for cross validation we just pass 'method="cv"' to the train function. Now, we let the function do its thing. Note; setting 'cache=TRUE' in the {r echo=X,results=X,cache=T} part in Markdown should save us a *lot* of time when knitting this over and over again. 
+
+```{r cache=TRUE,warning=FALSE}
+modFit <- train(classe ~.,data=subTraining,method="rf",
+      trControl = trainControl(method = "cv", number = 4, allowParallel = TRUE))
+
+pred <- predict(modFit,subTesting)
+confusion <- confusionMatrix(pred,subTesting$classe)
+confusion
+```
+
+The confusion matrix certainly looks good! We're getting an error rate of 1 - 0.9923 = **.77%** here. We accept the model and apply it on the real test cases. There's grades involved and everything so this really has to be right.
+
+A small calculation gives my chance of 20/20 points as (.9923)^20 = 85.6%. That's great! Getting a 19 or 20 out of 20 points gives me a 98.5% chance.
+```{r cache=TRUE}
+finalResult <- predict(modFit,testingRAW)
+finalResult
+```
+
+I'll accept these odds. Off to go submit these!
